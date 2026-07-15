@@ -16,6 +16,7 @@
     <application
         android:label="Deekseep"
         android:description="@string/moddesc"
+        android:extractNativeLibs="false"
         android:allowBackup="false">
 
         <activity

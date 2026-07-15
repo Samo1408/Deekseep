@@ -344,6 +344,7 @@ public class Main extends XposedModule {
             });
         } catch (Throwable t) { log("hook onActivityResult failed: " + t); }
 
+        try { DexKitResolver.resolve(cl); } catch (Throwable t) { log("dexkit resolve wiring failed: " + t); }
         // hook ChatFullCompletionRequest 构造，注入系统提示词到 prompt 字段
         hookChatRequest(cl);
         // ★ 在宿主读取当前会话前同步修复无 id THINK，避免后台线程与首屏加载竞态。
@@ -1452,16 +1453,40 @@ public class Main extends XposedModule {
     // ── ChatFullCompletionRequest 系统提示词注入 ─────────────────────
 
     private void hookChatRequest(ClassLoader cl) {
+        Class<?> k = Targets.chatRequest;
+        if (k == null) { log("hookChatRequest skipped (unresolved)"); return; }
         try {
-            Class<?> k = cl.loadClass("ew0");
-            int n = 0;
+            ArrayList<Constructor<?>> candidates = new ArrayList<>();
+            int primaryCount = 0;
+            int syntheticCount = 0;
             for (Constructor<?> ctor : k.getDeclaredConstructors()) {
                 Class<?>[] pts = ctor.getParameterTypes();
+                boolean synthetic = pts.length >= 4
+                        && pts[0] == int.class
+                        && pts[1] == String.class
+                        && pts[2] == Integer.class
+                        && pts[3] == String.class;
+                boolean primary = pts.length >= 3
+                        && pts[0] == String.class
+                        && pts[1] == Integer.class
+                        && pts[2] == String.class;
+                if (!synthetic && !primary) continue;
+                candidates.add(ctor);
+                if (synthetic) syntheticCount++;
+                else primaryCount++;
+            }
+            if (primaryCount != 1 || syntheticCount != 1 || candidates.size() != 2) {
+                log("hookChatRequest skipped (ctor shape primary=" + primaryCount
+                        + ", synthetic=" + syntheticCount + ")");
+                return;
+            }
+
+            int n = 0;
+            for (Constructor<?> ctor : candidates) {
+                Class<?>[] pts = ctor.getParameterTypes();
                 // 合成构造器首参为 int（kotlinx 序列化标志位），普通构造器首参为 String
-                final boolean isSynthetic = pts.length > 0 && pts[0] == int.class;
+                final boolean isSynthetic = pts[0] == int.class;
                 final int promptIdx = isSynthetic ? 3 : 2;
-                if (pts.length <= promptIdx) continue;
-                if (pts[promptIdx] != String.class) continue;
                 hook(ctor).intercept(new Hooker() {
                     @Override public Object intercept(Chain chain) throws Throwable {
                         try {
@@ -1480,7 +1505,7 @@ public class Main extends XposedModule {
                 });
                 n++;
             }
-            log("hooked ew0 constructors x" + n);
+            log("hooked chat-request ctors x" + n);
         } catch (Throwable t) { log("hookChatRequest failed: " + t); }
     }
 
