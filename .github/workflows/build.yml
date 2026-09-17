@@ -26,9 +26,21 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: |
+            platform-tools
+            platforms;android-35
+            build-tools;35.0.0
 
-      - name: Install Android platform and build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-35/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt2"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/d8"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/zipalign"
+          test -x "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
 
       - name: Build and test all variants
         run: bash scripts/build-all.sh
